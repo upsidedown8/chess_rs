@@ -23,7 +23,7 @@ impl Color {
     pub fn as_letter(&self) -> char {
         match *self {
             Color::White => 'w',
-            Color::Black => 'b'
+            Color::Black => 'b',
         }
     }
 
@@ -36,74 +36,75 @@ impl Color {
 #[repr(usize)]
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Pieces {
-    WhitePawn    = 0,
-    WhiteKnight  = 1,
-    WhiteBishop  = 2,
-    WhiteRook    = 3,
-    WhiteQueen   = 4,
-    WhiteKing    = 5,
-    BlackPawn    = 6,
-    BlackKnight  = 7,
-    BlackBishop  = 8,
-    BlackRook    = 9,
-    BlackQueen   = 10,
-    BlackKing    = 11,
+    WhitePawn = 0,
+    WhiteKnight = 1,
+    WhiteBishop = 2,
+    WhiteRook = 3,
+    WhiteQueen = 4,
+    WhiteKing = 5,
+    BlackPawn = 6,
+    BlackKnight = 7,
+    BlackBishop = 8,
+    BlackRook = 9,
+    BlackQueen = 10,
+    BlackKing = 11,
 }
 
 impl Pieces {
     pub fn color(&self) -> Color {
         match *self {
-            Pieces::WhitePawn | 
-            Pieces::WhiteKnight | 
-            Pieces::WhiteBishop | 
-            Pieces::WhiteRook | 
-            Pieces::WhiteQueen | 
-            Pieces::WhiteKing => Color::White,
-            
-            Pieces::BlackPawn | 
-            Pieces::BlackKnight | 
-            Pieces::BlackBishop | 
-            Pieces::BlackRook | 
-            Pieces::BlackQueen | 
-            Pieces::BlackKing => Color::Black,
+            Pieces::WhitePawn
+            | Pieces::WhiteKnight
+            | Pieces::WhiteBishop
+            | Pieces::WhiteRook
+            | Pieces::WhiteQueen
+            | Pieces::WhiteKing => Color::White,
+
+            Pieces::BlackPawn
+            | Pieces::BlackKnight
+            | Pieces::BlackBishop
+            | Pieces::BlackRook
+            | Pieces::BlackQueen
+            | Pieces::BlackKing => Color::Black,
         }
     }
+    #[inline(always)]
     pub fn enemy_color(&self) -> Color {
         self.color().enemy()
     }
     pub fn enemy_piece(&self) -> Pieces {
         match *self {
-            Pieces::WhitePawn   => Pieces::BlackPawn, 
+            Pieces::WhitePawn => Pieces::BlackPawn,
             Pieces::WhiteKnight => Pieces::BlackKnight,
             Pieces::WhiteBishop => Pieces::BlackBishop,
-            Pieces::WhiteRook   => Pieces::BlackRook,
-            Pieces::WhiteQueen  => Pieces::BlackQueen,
-            Pieces::WhiteKing   => Pieces::BlackKing,
-            
-            Pieces::BlackPawn   => Pieces::WhitePawn,
-            Pieces::BlackKnight => Pieces::WhiteKnight, 
+            Pieces::WhiteRook => Pieces::BlackRook,
+            Pieces::WhiteQueen => Pieces::BlackQueen,
+            Pieces::WhiteKing => Pieces::BlackKing,
+
+            Pieces::BlackPawn => Pieces::WhitePawn,
+            Pieces::BlackKnight => Pieces::WhiteKnight,
             Pieces::BlackBishop => Pieces::WhiteBishop,
-            Pieces::BlackRook   => Pieces::WhiteRook,
-            Pieces::BlackQueen  => Pieces::WhiteQueen,
-            Pieces::BlackKing   => Pieces::WhiteKing,
+            Pieces::BlackRook => Pieces::WhiteRook,
+            Pieces::BlackQueen => Pieces::WhiteQueen,
+            Pieces::BlackKing => Pieces::WhiteKing,
         }
     }
-    
+
     pub fn notation(&self) -> char {
         match *self {
-            Pieces::WhitePawn   => 'P', 
+            Pieces::WhitePawn => 'P',
             Pieces::WhiteKnight => 'N',
             Pieces::WhiteBishop => 'B',
-            Pieces::WhiteRook   => 'R',
-            Pieces::WhiteQueen  => 'Q',
-            Pieces::WhiteKing   => 'K',
-            
-            Pieces::BlackPawn   => 'p',
-            Pieces::BlackKnight => 'n', 
+            Pieces::WhiteRook => 'R',
+            Pieces::WhiteQueen => 'Q',
+            Pieces::WhiteKing => 'K',
+
+            Pieces::BlackPawn => 'p',
+            Pieces::BlackKnight => 'n',
             Pieces::BlackBishop => 'b',
-            Pieces::BlackRook   => 'r',
-            Pieces::BlackQueen  => 'q',
-            Pieces::BlackKing   => 'k',
+            Pieces::BlackRook => 'r',
+            Pieces::BlackQueen => 'q',
+            Pieces::BlackKing => 'k',
         }
     }
 
@@ -112,55 +113,67 @@ impl Pieces {
         *self as usize
     }
 
+    #[inline(always)]
     pub fn is_pawn(&self) -> bool {
         matches!(*self, Pieces::WhitePawn | Pieces::BlackPawn)
     }
+    #[inline(always)]
     pub fn is_knight(&self) -> bool {
         matches!(*self, Pieces::WhiteKnight | Pieces::BlackKnight)
     }
+    #[inline(always)]
     pub fn is_bishop(&self) -> bool {
         matches!(*self, Pieces::WhiteBishop | Pieces::BlackBishop)
     }
+    #[inline(always)]
     pub fn is_rook(&self) -> bool {
         matches!(*self, Pieces::WhiteRook | Pieces::BlackRook)
     }
+    #[inline(always)]
     pub fn is_queen(&self) -> bool {
         matches!(*self, Pieces::WhiteQueen | Pieces::BlackQueen)
     }
+    #[inline(always)]
     pub fn is_king(&self) -> bool {
         matches!(*self, Pieces::WhiteKing | Pieces::BlackKing)
     }
 
+    #[inline(always)]
     pub fn pawn(color: Color) -> Pieces {
         match color {
             Color::White => Pieces::WhitePawn,
             Color::Black => Pieces::BlackPawn,
         }
     }
+    #[inline(always)]
     pub fn knight(color: Color) -> Pieces {
         match color {
             Color::White => Pieces::WhiteKnight,
             Color::Black => Pieces::BlackKnight,
         }
     }
+    #[inline(always)]
     pub fn bishop(color: Color) -> Pieces {
         match color {
             Color::White => Pieces::WhiteBishop,
             Color::Black => Pieces::BlackBishop,
         }
     }
+    #[inline(always)]
     pub fn rook(color: Color) -> Pieces {
         match color {
             Color::White => Pieces::WhiteRook,
             Color::Black => Pieces::BlackRook,
         }
     }
+    #[inline(always)]
     pub fn queen(color: Color) -> Pieces {
         match color {
             Color::White => Pieces::WhiteQueen,
             Color::Black => Pieces::BlackQueen,
         }
     }
+    #[inline(always)]
     pub fn king(color: Color) -> Pieces {
         match color {
             Color::White => Pieces::WhiteKing,

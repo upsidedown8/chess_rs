@@ -43,7 +43,7 @@ impl Board {
 
         let args: Vec<&str> = fen.split_whitespace().collect();
         if args.len() != 6 {
-            return Err("Expected 6 whitespace delimited arguments")
+            return Err("Expected 6 whitespace delimited arguments");
         }
 
         // parse board
@@ -68,16 +68,22 @@ impl Board {
                 'Q' => piece = Some(Pieces::WhiteQueen),
                 'K' => piece = Some(Pieces::WhiteKing),
 
-                '1' | '2' | '3' | '4' |
-                '5' | '6' | '7' | '8' => square += fen_board_arg.chars().nth(pos).unwrap().to_string().parse::<usize>().unwrap(),
+                '1' | '2' | '3' | '4' | '5' | '6' | '7' | '8' => {
+                    square += fen_board_arg
+                        .chars()
+                        .nth(pos)
+                        .unwrap()
+                        .to_string()
+                        .parse::<usize>()
+                        .unwrap()
+                }
 
-                '/' | ' ' => { },
+                '/' | ' ' => {}
                 _ => return Err("Unrecognised character in FEN"),
             }
 
             if let Some(my_piece) = piece {
-                self.get_piece_bitboard_mut(my_piece)
-                    .set_bit(square);
+                self.get_bb_mut(my_piece).set_bit(square);
                 self.pieces[square] = piece;
                 square += 1;
             }
@@ -92,13 +98,11 @@ impl Board {
         // parse current player
         let player_arg = args[1];
         self.current_color = match player_arg.chars().next() {
-            Some(c) => {
-                match c {
-                    'w' => Color::White,
-                    'b' => Color::Black,
-                    _ => return Err("Expected w/b for current player"),
-                }
-            }
+            Some(c) => match c {
+                'w' => Color::White,
+                'b' => Color::Black,
+                _ => return Err("Expected w/b for current player"),
+            },
             None => return Err("Expected w/b for current player"),
         };
 
@@ -120,7 +124,7 @@ impl Board {
         if en_passant_arg == "-" {
             self.en_passant = None;
         } else {
-            self.en_passant = Some(Square::from_notation(en_passant_arg));
+            self.en_passant = Square::from_notation(en_passant_arg);
         }
 
         // parse fifty_move
@@ -129,21 +133,19 @@ impl Board {
         // parse fullmove count
         self.full_move_count = args[5].parse().unwrap();
 
-        *self.get_combined_bitboard_mut(Color::White) =
-            self.get_piece_bitboard(Pieces::WhitePawn) |
-            self.get_piece_bitboard(Pieces::WhiteKnight) |
-            self.get_piece_bitboard(Pieces::WhiteBishop) |
-            self.get_piece_bitboard(Pieces::WhiteRook) |
-            self.get_piece_bitboard(Pieces::WhiteQueen) |
-            self.get_piece_bitboard(Pieces::WhiteKing);
-        
-        *self.get_combined_bitboard_mut(Color::Black) =
-            self.get_piece_bitboard(Pieces::BlackPawn) |
-            self.get_piece_bitboard(Pieces::BlackKnight) |
-            self.get_piece_bitboard(Pieces::BlackBishop) |
-            self.get_piece_bitboard(Pieces::BlackRook) |
-            self.get_piece_bitboard(Pieces::BlackQueen) |
-            self.get_piece_bitboard(Pieces::BlackKing);
+        *self.get_combined_bb_mut(Color::White) = self.get_bb(Pieces::WhitePawn)
+            | self.get_bb(Pieces::WhiteKnight)
+            | self.get_bb(Pieces::WhiteBishop)
+            | self.get_bb(Pieces::WhiteRook)
+            | self.get_bb(Pieces::WhiteQueen)
+            | self.get_bb(Pieces::WhiteKing);
+
+        *self.get_combined_bb_mut(Color::Black) = self.get_bb(Pieces::BlackPawn)
+            | self.get_bb(Pieces::BlackKnight)
+            | self.get_bb(Pieces::BlackBishop)
+            | self.get_bb(Pieces::BlackRook)
+            | self.get_bb(Pieces::BlackQueen)
+            | self.get_bb(Pieces::BlackKing);
 
         Ok(())
     }
@@ -184,7 +186,7 @@ impl Board {
 
         // update fifty_move
         if self.pieces[start].unwrap().is_pawn() || self.pieces[end].is_some() {
-            self.fifty_move = 0;            
+            self.fifty_move = 0;
         } else {
             self.fifty_move += 1;
         }
@@ -195,22 +197,24 @@ impl Board {
                 debug_assert!(self.en_passant.is_some());
 
                 let friendly_pawn = Pieces::pawn(friendly_color);
-                let enemy_pawn = Pieces::pawn(enemy_color);                
+                let enemy_pawn = Pieces::pawn(enemy_color);
                 let en_passant_sq = self.en_passant.unwrap().sq();
 
                 // friendly piece bb
-                self.get_piece_bitboard_mut(friendly_pawn).clear_bit(start);
-                self.get_piece_bitboard_mut(friendly_pawn).set_bit(en_passant_sq);
+                self.get_bb_mut(friendly_pawn)
+                    .clear_bit(start)
+                    .set_bit(en_passant_sq);
 
                 // enemy piece bb
-                self.get_piece_bitboard_mut(enemy_pawn).clear_bit(end);
-                
+                self.get_bb_mut(enemy_pawn).clear_bit(end);
+
                 // friendly combined bb
-                self.get_combined_bitboard_mut(friendly_color).clear_bit(start);
-                self.get_combined_bitboard_mut(friendly_color).set_bit(en_passant_sq);
-                
+                self.get_combined_bb_mut(friendly_color)
+                    .clear_bit(start)
+                    .set_bit(en_passant_sq);
+
                 // enemy combined bb
-                self.get_combined_bitboard_mut(enemy_color).clear_bit(end);
+                self.get_combined_bb_mut(enemy_color).clear_bit(end);
 
                 // piece array
                 self.pieces[en_passant_sq] = Some(friendly_pawn);
@@ -218,7 +222,7 @@ impl Board {
                 self.pieces[end] = None;
 
                 self.en_passant = None;
-            },
+            }
             super::r#move::MOVE_TYPE_CASTLE => {
                 let friendly_king = Pieces::king(friendly_color);
                 let friendly_rook = Pieces::rook(friendly_color);
@@ -226,12 +230,12 @@ impl Board {
                 debug_assert_eq!(start_piece, friendly_king);
 
                 // friendly king bb
-                self.get_piece_bitboard_mut(friendly_king).clear_bit(start);
-                self.get_piece_bitboard_mut(friendly_king).set_bit(end);
+                self.get_bb_mut(friendly_king).clear_bit(start).set_bit(end);
 
                 // friendly combined bb
-                self.get_combined_bitboard_mut(friendly_color).clear_bit(start);
-                self.get_combined_bitboard_mut(friendly_color).set_bit(end);
+                self.get_combined_bb_mut(friendly_color)
+                    .clear_bit(start)
+                    .set_bit(end);
 
                 let offset = start & 0b111000;
 
@@ -243,17 +247,19 @@ impl Board {
                         debug_assert_eq!(self.pieces[offset].unwrap(), friendly_rook);
 
                         // friendly rook bb
-                        self.get_piece_bitboard_mut(friendly_rook).clear_bit(offset);
-                        self.get_piece_bitboard_mut(friendly_rook).set_bit(offset + 3);
+                        self.get_bb_mut(friendly_rook)
+                            .clear_bit(offset)
+                            .set_bit(offset + 3);
 
                         // friendly combined bb
-                        self.get_combined_bitboard_mut(friendly_color).clear_bit(offset);
-                        self.get_combined_bitboard_mut(friendly_color).set_bit(offset + 3);
+                        self.get_combined_bb_mut(friendly_color)
+                            .clear_bit(offset)
+                            .set_bit(offset + 3);
 
                         // pieces array
                         self.pieces[offset + 3] = Some(friendly_rook);
                         self.pieces[offset] = None;
-                    },
+                    }
                     // kingside
                     _ => {
                         debug_assert!(self.can_castle_ks(friendly_color));
@@ -261,12 +267,14 @@ impl Board {
                         debug_assert_eq!(self.pieces[offset + 7].unwrap(), friendly_rook);
 
                         // friendly rook bb
-                        self.get_piece_bitboard_mut(friendly_rook).clear_bit(offset + 7);
-                        self.get_piece_bitboard_mut(friendly_rook).set_bit(offset + 5);
+                        self.get_bb_mut(friendly_rook)
+                            .clear_bit(offset + 7)
+                            .set_bit(offset + 5);
 
                         // friendly combined bb
-                        self.get_combined_bitboard_mut(friendly_color).clear_bit(offset + 7);
-                        self.get_combined_bitboard_mut(friendly_color).set_bit(offset + 5);
+                        self.get_combined_bb_mut(friendly_color)
+                            .clear_bit(offset + 7)
+                            .set_bit(offset + 5);
 
                         // pieces array
                         self.pieces[offset + 5] = Some(friendly_rook);
@@ -282,7 +290,7 @@ impl Board {
                 self.pieces[start] = None;
 
                 self.en_passant = None;
-            },
+            }
             super::r#move::MOVE_TYPE_PROMOTION => {
                 let friendly_pawn = Pieces::pawn(friendly_color);
 
@@ -290,20 +298,20 @@ impl Board {
 
                 // decode the promotion piece
                 let promotion_piece = match piece {
-                    super::r#move::MOVE_PROMOTION_PIECE_KNIGHT  => Pieces::knight(friendly_color),
-                    super::r#move::MOVE_PROMOTION_PIECE_BISHOP  => Pieces::bishop(friendly_color),
-                    super::r#move::MOVE_PROMOTION_PIECE_ROOK    => Pieces::rook(friendly_color),
-                    super::r#move::MOVE_PROMOTION_PIECE_QUEEN   => Pieces::queen(friendly_color),
+                    super::r#move::MOVE_PROMOTION_PIECE_KNIGHT => Pieces::knight(friendly_color),
+                    super::r#move::MOVE_PROMOTION_PIECE_BISHOP => Pieces::bishop(friendly_color),
+                    super::r#move::MOVE_PROMOTION_PIECE_ROOK => Pieces::rook(friendly_color),
+                    super::r#move::MOVE_PROMOTION_PIECE_QUEEN => Pieces::queen(friendly_color),
                     _ => panic!("Couldn't match the promotion piece"),
                 };
 
                 // clear the end piece if this is a capture
                 if let Some(end_piece) = end_piece {
                     // enemy piece bb
-                    self.get_piece_bitboard_mut(end_piece).clear_bit(end);
+                    self.get_bb_mut(end_piece).clear_bit(end);
 
                     // enemy combined bb
-                    self.get_combined_bitboard_mut(enemy_color).clear_bit(end);
+                    self.get_combined_bb_mut(enemy_color).clear_bit(end);
 
                     // additionally, if the captured piece was a rook, update the castling state
                     if end_piece.is_rook() {
@@ -312,18 +320,19 @@ impl Board {
                 }
 
                 // friendly piece bb for pawn and promotion piece
-                self.get_piece_bitboard_mut(friendly_pawn).clear_bit(start);
-                self.get_piece_bitboard_mut(promotion_piece).set_bit(end);
+                self.get_bb_mut(friendly_pawn).clear_bit(start);
+                self.get_bb_mut(promotion_piece).set_bit(end);
 
                 // friendly combined bb
-                self.get_combined_bitboard_mut(friendly_color).clear_bit(start);
-                self.get_combined_bitboard_mut(friendly_color).set_bit(end);
+                self.get_combined_bb_mut(friendly_color)
+                    .clear_bit(start)
+                    .set_bit(end);
 
                 // pieces array
                 self.pieces[start] = None;
                 self.pieces[end] = Some(promotion_piece);
                 self.en_passant = None;
-            },
+            }
             _ => {
                 self.en_passant = if start_piece.is_pawn() && Board::distance(end, start) == 16 {
                     Some(Square::from_usize((end + start) / 2))
@@ -333,10 +342,10 @@ impl Board {
 
                 if let Some(end_piece) = end_piece {
                     // enemy piece bb
-                    self.get_piece_bitboard_mut(end_piece).clear_bit(end);
+                    self.get_bb_mut(end_piece).clear_bit(end);
 
                     // enemy combined bb
-                    self.get_combined_bitboard_mut(enemy_color).clear_bit(end);
+                    self.get_combined_bb_mut(enemy_color).clear_bit(end);
 
                     // if friendly piece takes enemy rook, then that enemy side cannot be castled to
                     if end_piece.is_rook() {
@@ -348,19 +357,18 @@ impl Board {
                 if start_piece.is_king() {
                     self.disable_castle_for_color(friendly_color);
                 }
-                
                 // if friendly rook moves, then that side cannot be castled to
                 else if start_piece.is_rook() {
                     self.disable_castle_from_sq(start);
                 }
 
                 // friendly piece bb
-                self.get_piece_bitboard_mut(start_piece).clear_bit(start);
-                self.get_piece_bitboard_mut(start_piece).set_bit(end);
+                self.get_bb_mut(start_piece).clear_bit(start).set_bit(end);
 
                 // friendly combined bb
-                self.get_combined_bitboard_mut(friendly_color).clear_bit(start);
-                self.get_combined_bitboard_mut(friendly_color).set_bit(end);
+                self.get_combined_bb_mut(friendly_color)
+                    .clear_bit(start)
+                    .set_bit(end);
 
                 // pieces array
                 self.pieces[end] = self.pieces[start];
@@ -377,8 +385,8 @@ impl Board {
         let piece = my_move.get_move_piece();
 
         // store current colors
-        let friendly_color = self.friendly_color();
-        let enemy_color = self.enemy_color();
+        let friendly_color = self.enemy_color();
+        let enemy_color = self.friendly_color();
 
         // load previous state
         self.current_color = self.current_color.enemy();
@@ -413,37 +421,39 @@ impl Board {
                 debug_assert!(self.pieces[self.en_passant.unwrap().sq()] == Some(friendly_pawn));
 
                 // friendly piece bb
-                self.get_piece_bitboard_mut(friendly_pawn).set_bit(start);
-                self.get_piece_bitboard_mut(friendly_pawn).clear_bit(en_passant_sq);
+                self.get_bb_mut(friendly_pawn)
+                    .set_bit(start)
+                    .clear_bit(en_passant_sq);
 
                 // enemy piece bb
-                self.get_piece_bitboard_mut(enemy_pawn).set_bit(end);
-                
+                self.get_bb_mut(enemy_pawn).set_bit(end);
+
                 // friendly combined bb
-                self.get_combined_bitboard_mut(friendly_color).set_bit(start);
-                self.get_combined_bitboard_mut(friendly_color).clear_bit(en_passant_sq);
-                
+                self.get_combined_bb_mut(friendly_color)
+                    .set_bit(start)
+                    .clear_bit(en_passant_sq);
+
                 // enemy combined bb
-                self.get_combined_bitboard_mut(enemy_color).set_bit(end);
+                self.get_combined_bb_mut(enemy_color).set_bit(end);
 
                 // piece array
                 self.pieces[en_passant_sq] = None;
                 self.pieces[start] = Some(friendly_pawn);
                 self.pieces[end] = Some(enemy_pawn);
-            },
+            }
             super::r#move::MOVE_TYPE_CASTLE => {
                 let friendly_king = Pieces::king(friendly_color);
                 let friendly_rook = Pieces::rook(friendly_color);
 
                 debug_assert_eq!(end_piece.unwrap(), friendly_king);
-                
+
                 // friendly piece bb
-                self.get_piece_bitboard_mut(friendly_king).set_bit(start);
-                self.get_piece_bitboard_mut(friendly_king).clear_bit(end);
+                self.get_bb_mut(friendly_king).set_bit(start).clear_bit(end);
 
                 // friendly combined bb
-                self.get_combined_bitboard_mut(friendly_color).set_bit(start);
-                self.get_combined_bitboard_mut(friendly_color).clear_bit(end);
+                self.get_combined_bb_mut(friendly_color)
+                    .set_bit(start)
+                    .clear_bit(end);
 
                 // pieces array
                 self.pieces[start] = Some(friendly_king);
@@ -454,65 +464,72 @@ impl Board {
                     // queenside
                     super::r#move::MOVE_CASTLE_SIDE_QS => {
                         // friendly rook bb
-                        self.get_piece_bitboard_mut(friendly_rook).set_bit(offset);
-                        self.get_piece_bitboard_mut(friendly_rook).clear_bit(offset + 3);
+                        self.get_bb_mut(friendly_rook)
+                            .set_bit(offset)
+                            .clear_bit(offset + 3);
 
                         // friendly combined bb
-                        self.get_combined_bitboard_mut(friendly_color).set_bit(offset);
-                        self.get_combined_bitboard_mut(friendly_color).clear_bit(offset + 3);
+                        self.get_combined_bb_mut(friendly_color)
+                            .set_bit(offset)
+                            .clear_bit(offset + 3);
 
                         // pieces array
                         self.pieces[offset + 3] = None;
                         self.pieces[offset] = Some(friendly_rook);
-                    },
+                    }
                     // kingside
                     _ => {
                         // friendly rook bb
-                        self.get_piece_bitboard_mut(friendly_rook).set_bit(offset + 7);
-                        self.get_piece_bitboard_mut(friendly_rook).clear_bit(offset + 5);
+                        self.get_bb_mut(friendly_rook)
+                            .set_bit(offset + 7)
+                            .clear_bit(offset + 5);
 
                         // friendly combined bb
-                        self.get_combined_bitboard_mut(friendly_color).set_bit(offset + 7);
-                        self.get_combined_bitboard_mut(friendly_color).clear_bit(offset + 5);
+                        self.get_combined_bb_mut(friendly_color)
+                            .set_bit(offset + 7)
+                            .clear_bit(offset + 5);
 
                         // pieces array
                         self.pieces[offset + 5] = None;
                         self.pieces[offset + 7] = Some(friendly_rook);
                     }
                 };
-            },
+            }
             super::r#move::MOVE_TYPE_PROMOTION => {
                 let friendly_pawn = Pieces::pawn(friendly_color);
                 let promotion_piece = self.pieces[end].unwrap();
 
                 // friendly piece bb
-                self.get_piece_bitboard_mut(friendly_pawn).set_bit(start);
-                self.get_piece_bitboard_mut(promotion_piece).clear_bit(end);
+                self.get_bb_mut(friendly_pawn).set_bit(start);
+                self.get_bb_mut(promotion_piece).clear_bit(end);
 
                 // friendly combined bb
-                self.get_combined_bitboard_mut(friendly_color).set_bit(start);
-                self.get_combined_bitboard_mut(friendly_color).clear_bit(end);
+                self.get_combined_bb_mut(friendly_color)
+                    .set_bit(start)
+                    .clear_bit(end);
 
                 // piece array
                 self.pieces[start] = Some(friendly_pawn);
                 self.pieces[end] = captured_piece;
-    
+
                 if let Some(captured_piece) = captured_piece {
                     // enemy piece bb
-                    self.get_piece_bitboard_mut(captured_piece).set_bit(end);
-                    
+                    self.get_bb_mut(captured_piece).set_bit(end);
+
                     // enemy combined bb
-                    self.get_combined_bitboard_mut(enemy_color).set_bit(end);
+                    self.get_combined_bb_mut(enemy_color).set_bit(end);
                 }
-            },
+            }
             _ => {
                 // friendly piece bb
-                self.get_piece_bitboard_mut(end_piece.unwrap()).set_bit(start);
-                self.get_piece_bitboard_mut(end_piece.unwrap()).clear_bit(end);
+                self.get_bb_mut(end_piece.unwrap())
+                    .set_bit(start)
+                    .clear_bit(end);
 
                 // friendly combined bb
-                self.get_combined_bitboard_mut(friendly_color).set_bit(start);
-                self.get_combined_bitboard_mut(friendly_color).clear_bit(end);
+                self.get_combined_bb_mut(friendly_color)
+                    .set_bit(start)
+                    .clear_bit(end);
 
                 // piece array
                 self.pieces[start] = self.pieces[end];
@@ -520,15 +537,16 @@ impl Board {
 
                 if let Some(captured_piece) = captured_piece {
                     // enemy piece bb
-                    self.get_piece_bitboard_mut(captured_piece).set_bit(end);
+                    self.get_bb_mut(captured_piece).set_bit(end);
 
                     // enemy combined bb
-                    self.get_combined_bitboard_mut(enemy_color).set_bit(end);
+                    self.get_combined_bb_mut(enemy_color).set_bit(end);
                 }
             }
         }
     }
 
+    #[inline(always)]
     fn disable_castle_for_color(&mut self, color: Color) {
         if color.is_white() {
             self.castling &= !WHITE_CASTLE;
@@ -536,16 +554,18 @@ impl Board {
             self.castling &= !BLACK_CASTLE;
         }
     }
+    #[inline(always)]
     fn disable_castle_from_sq(&mut self, sq: usize) {
         match Square::from_usize(sq) {
             Square::A1 => self.castling &= !WHITE_CASTLE_QS,
             Square::H1 => self.castling &= !WHITE_CASTLE_KS,
             Square::A8 => self.castling &= !BLACK_CASTLE_QS,
             Square::H8 => self.castling &= !BLACK_CASTLE_KS,
-            _ => { },
+            _ => {}
         }
     }
 
+    #[inline(always)]
     pub fn can_castle_qs(&self, color: Color) -> bool {
         if color.is_white() {
             self.castling & WHITE_CASTLE_QS != 0
@@ -553,6 +573,7 @@ impl Board {
             self.castling & BLACK_CASTLE_QS != 0
         }
     }
+    #[inline(always)]
     pub fn can_castle_ks(&self, color: Color) -> bool {
         if color.is_white() {
             self.castling & WHITE_CASTLE_KS != 0
@@ -561,6 +582,7 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     pub fn distance(a: usize, b: usize) -> usize {
         if a > b {
             a - b
@@ -569,24 +591,42 @@ impl Board {
         }
     }
 
+    #[inline(always)]
     pub fn friendly_color(&self) -> Color {
         self.current_color
     }
+    #[inline(always)]
     pub fn enemy_color(&self) -> Color {
         self.current_color.enemy()
     }
 
-    pub fn get_piece_bitboard(&self, piece: Pieces) -> u64 {
+    #[inline(always)]
+    pub fn get_bb(&self, piece: Pieces) -> u64 {
         self.piece_bitboards[piece.idx()]
     }
-    pub fn get_piece_bitboard_mut(&mut self, piece: Pieces) -> &mut u64 {
+    #[inline(always)]
+    pub fn get_bb_mut(&mut self, piece: Pieces) -> &mut u64 {
         &mut self.piece_bitboards[piece.idx()]
     }
-    pub fn get_combined_bitboard(&self, color: Color) -> u64 {
+    #[inline(always)]
+    pub fn get_combined_bb(&self, color: Color) -> u64 {
         self.combined_bitboards[color.idx()]
     }
-    pub fn get_combined_bitboard_mut(&mut self, color: Color) -> &mut u64 {
+    #[inline(always)]
+    pub fn get_combined_bb_mut(&mut self, color: Color) -> &mut u64 {
         &mut self.combined_bitboards[color.idx()]
+    }
+    #[inline(always)]
+    pub fn get_occupancy(&self) -> u64 {
+        self.get_combined_bb(Color::White) | self.get_combined_bb(Color::Black)
+    }
+    #[inline(always)]
+    pub fn get_friendly_occupancy(&self) -> u64 {
+        self.get_combined_bb(self.friendly_color())
+    }
+    #[inline(always)]
+    pub fn get_enemy_occupancy(&self) -> u64 {
+        self.get_combined_bb(self.enemy_color())
     }
 
     pub fn to_fen(&self) -> String {
@@ -618,8 +658,12 @@ impl Board {
 
             // reached end of row
             if file > 7 {
-                if empty != 0 { result.push_str(&empty.to_string()); }
-                if rank < 7   { result.push('/'); }
+                if empty != 0 {
+                    result.push_str(&empty.to_string());
+                }
+                if rank < 7 {
+                    result.push('/');
+                }
                 rank += 1;
                 empty = 0;
                 file = 0;
@@ -631,10 +675,18 @@ impl Board {
         if self.castling == 0 {
             result.push('-');
         } else {
-            if self.castling & WHITE_CASTLE_QS != 0 { result.push('Q'); }
-            if self.castling & BLACK_CASTLE_QS != 0 { result.push('q'); }
-            if self.castling & WHITE_CASTLE_KS != 0 { result.push('K'); }
-            if self.castling & BLACK_CASTLE_KS != 0 { result.push('k'); }
+            if self.castling & WHITE_CASTLE_QS != 0 {
+                result.push('Q');
+            }
+            if self.castling & BLACK_CASTLE_QS != 0 {
+                result.push('q');
+            }
+            if self.castling & WHITE_CASTLE_KS != 0 {
+                result.push('K');
+            }
+            if self.castling & BLACK_CASTLE_KS != 0 {
+                result.push('k');
+            }
         }
 
         result.push_str(&format!(
@@ -677,10 +729,7 @@ impl Default for Board {
 
 impl Display for Board {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let mut result = concat!(
-            "    a b c d e f g h\n",
-            "  ╭─────────────────╮\n"
-        ).to_string();
+        let mut result = concat!("    a b c d e f g h\n", "  ╭─────────────────╮\n").to_string();
 
         for rank in 0..8 {
             result.push_str(&format!("{} │ ", 8 - rank));
@@ -696,10 +745,7 @@ impl Display for Board {
             result.push_str(&format!("│ {}\n", 8 - rank));
         }
 
-        result.push_str(concat!(
-            "  ╰─────────────────╯\n",
-            "    a b c d e f g h\n"
-        ));
+        result.push_str(concat!("  ╰─────────────────╯\n", "    a b c d e f g h\n"));
         result.push_str(if self.friendly_color() == Color::White {
             "     White to move"
         } else {
@@ -723,11 +769,19 @@ mod tests {
     fn fen() {
         assert!(fen_test("r6r/1b2k1bq/8/8/7B/8/8/R3K2R b QK - 3 2"));
         assert!(fen_test("8/8/8/2k5/2pP4/8/B7/4K3 b - d3 5 3"));
-        assert!(fen_test("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk - 2 2"));
-        assert!(fen_test("r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk - 3 2"));
-        assert!(fen_test("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK - 3 9"));
+        assert!(fen_test(
+            "r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk - 2 2"
+        ));
+        assert!(fen_test(
+            "r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk - 3 2"
+        ));
+        assert!(fen_test(
+            "rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK - 3 9"
+        ));
         assert!(fen_test("2r5/3pk3/8/2P5/8/2K5/8/8 w - - 5 4"));
-        assert!(fen_test("2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK - 3 2"));
+        assert!(fen_test(
+            "2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK - 3 2"
+        ));
         assert!(fen_test("4k3/8/8/5R2/8/8/8/4K3 b - - 0 1"));
         assert!(fen_test("8/4k3/8/8/4R3/8/8/4K3 b - - 0 1"));
         assert!(fen_test("4k3/6N1/5b2/4R3/8/8/8/4K3 b - - 0 1"));
@@ -768,15 +822,27 @@ mod tests {
 
     #[test]
     fn undo() {
-        assert!(undo_test("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1R1K b kq - 1 1"));
+        assert!(undo_test(
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1R1K b kq - 1 1"
+        ));
         assert!(undo_test("r6r/1b2k1bq/8/8/7B/8/8/R3K2R b QK - 3 2"));
         assert!(undo_test("8/8/8/2k5/2pP4/8/B7/4K3 b - d3 5 3"));
-        assert!(undo_test("r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk - 2 2"));
-        assert!(undo_test("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8"));
-        assert!(undo_test("r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk - 3 2"));
-        assert!(undo_test("rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK - 3 9"));
+        assert!(undo_test(
+            "r1bqkbnr/pppppppp/n7/8/8/P7/1PPPPPPP/RNBQKBNR w QqKk - 2 2"
+        ));
+        assert!(undo_test(
+            "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8"
+        ));
+        assert!(undo_test(
+            "r3k2r/p1pp1pb1/bn2Qnp1/2qPN3/1p2P3/2N5/PPPBBPPP/R3K2R b QqKk - 3 2"
+        ));
+        assert!(undo_test(
+            "rnb2k1r/pp1Pbppp/2p5/q7/2B5/8/PPPQNnPP/RNB1K2R w QK - 3 9"
+        ));
         assert!(undo_test("2r5/3pk3/8/2P5/8/2K5/8/8 w - - 5 4"));
-        assert!(undo_test("2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK - 3 2"));
+        assert!(undo_test(
+            "2kr3r/p1ppqpb1/bn2Qnp1/3PN3/1p2P3/2N5/PPPBBPPP/R3K2R b QK - 3 2"
+        ));
         assert!(undo_test("4k3/8/8/5R2/8/8/8/4K3 b - - 0 1"));
         assert!(undo_test("8/4k3/8/8/4R3/8/8/4K3 b - - 0 1"));
         assert!(undo_test("4k3/6N1/5b2/4R3/8/8/8/4K3 b - - 0 1"));
@@ -785,12 +851,24 @@ mod tests {
         assert!(undo_test("8/8/8/1k6/3Pp3/8/8/4KQ2 b - d3 0 1"));
         assert!(undo_test("4k3/8/4r3/8/8/4Q3/8/2K5 b - - 0 1"));
         assert!(undo_test("8/8/8/8/k2Pp2Q/8/8/2K5 b - d3 0 1"));
-        assert!(undo_test("rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8"));
-        assert!(undo_test("r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10"));
-        assert!(undo_test("r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1"));
-        assert!(undo_test("r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1"));
+        assert!(undo_test(
+            "rnbq1k1r/pp1Pbppp/2p5/8/2B5/8/PPP1NnPP/RNBQK2R w KQ - 1 8"
+        ));
+        assert!(undo_test(
+            "r4rk1/1pp1qppp/p1np1n2/2b1p1B1/2B1P1b1/P1NP1N2/1PP1QPPP/R4RK1 w - - 0 10"
+        ));
+        assert!(undo_test(
+            "r3k2r/Pppp1ppp/1b3nbN/nP6/BBP1P3/q4N2/Pp1P2PP/R2Q1RK1 w kq - 0 1"
+        ));
+        assert!(undo_test(
+            "r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1"
+        ));
         assert!(undo_test("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -"));
-        assert!(undo_test("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"));
-        assert!(undo_test("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"));
+        assert!(undo_test(
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"
+        ));
+        assert!(undo_test(
+            "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+        ));
     }
 }
