@@ -16,9 +16,6 @@ impl Color {
     pub fn is_white(&self) -> bool {
         *self == Color::White
     }
-    pub fn is_black(&self) -> bool {
-        !self.is_white()
-    }
 
     pub fn as_letter(&self) -> char {
         match *self {
@@ -66,27 +63,6 @@ impl Pieces {
             | Pieces::BlackRook
             | Pieces::BlackQueen
             | Pieces::BlackKing => Color::Black,
-        }
-    }
-    #[inline(always)]
-    pub fn enemy_color(&self) -> Color {
-        self.color().enemy()
-    }
-    pub fn enemy_piece(&self) -> Pieces {
-        match *self {
-            Pieces::WhitePawn => Pieces::BlackPawn,
-            Pieces::WhiteKnight => Pieces::BlackKnight,
-            Pieces::WhiteBishop => Pieces::BlackBishop,
-            Pieces::WhiteRook => Pieces::BlackRook,
-            Pieces::WhiteQueen => Pieces::BlackQueen,
-            Pieces::WhiteKing => Pieces::BlackKing,
-
-            Pieces::BlackPawn => Pieces::WhitePawn,
-            Pieces::BlackKnight => Pieces::WhiteKnight,
-            Pieces::BlackBishop => Pieces::WhiteBishop,
-            Pieces::BlackRook => Pieces::WhiteRook,
-            Pieces::BlackQueen => Pieces::WhiteQueen,
-            Pieces::BlackKing => Pieces::WhiteKing,
         }
     }
 
