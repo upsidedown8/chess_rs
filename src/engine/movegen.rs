@@ -5,7 +5,6 @@ use crate::engine::board::Board;
 use crate::engine::piece::{Color, Pieces};
 use crate::engine::r#move::*;
 use crate::engine::square::Square;
-use crate::engine::perft;
 
 use super::bitboard::FULL_BB;
 
@@ -124,6 +123,7 @@ impl CaptureSideTrait for RightCapture {
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum Ranks {
     One = 0b0000_0001,
     Two = 0b0000_0010,
@@ -136,6 +136,7 @@ pub enum Ranks {
 }
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 pub enum Files {
     A = 0b0000_0001,
     B = 0b0000_0010,
@@ -231,8 +232,8 @@ pub struct MoveGenerator {
     rook_magic_shifts: [usize; 64],
     bishop_magic_shifts: [usize; 64],
 
-    rook_moves: Box<[[u64; 4096]; 64]>,
-    bishop_moves: Box<[[u64; 4096]; 64]>,
+    rook_moves: Box<[[u64; 4096]]>,
+    bishop_moves: Box<[[u64; 4096]]>,
 
     knight_moves: [u64; 64],
     king_moves: [u64; 64],
@@ -631,8 +632,8 @@ impl MoveGenerator {
             rook_magic_shifts: [0; 64],
             bishop_magic_shifts: [0; 64],
 
-            rook_moves: Box::new([[0; 4096]; 64]),
-            bishop_moves: Box::new([[0; 4096]; 64]),
+            rook_moves: vec![[0; 4096]; 64].into_boxed_slice(),
+            bishop_moves: vec![[0; 4096]; 64].into_boxed_slice(),
 
             knight_moves: [0; 64],
             king_moves: [0; 64],
@@ -826,11 +827,7 @@ impl MoveGenerator {
         blockers: u64,
     ) {
         let pawns_bb = board.get_bb(Pieces::pawn(P::color())) & !pinned;
-        let offset: i16 = if P::is_white() {
-            8
-        } else {
-            -8
-        };
+        let offset: i16 = P::forward_offset();
         let double_offset = offset * 2;
         let back_rank = P::opposite_back_rank();
         let en_passant_rank = P::en_passant_rank();
@@ -851,7 +848,7 @@ impl MoveGenerator {
         let mut promotion_moves = pawn_single_moves & blockers & self.ranks[back_rank as usize];
         while promotion_moves != 0 {
             let end = promotion_moves.pop_lsb() as i16;
-            move_list.add_move((offset + end) as usize, end as usize);
+            move_list.add_promotion((offset + end) as usize, end as usize);
         }
 
         pawn_single_moves &= self.ranks[en_passant_rank as usize];
@@ -1058,7 +1055,6 @@ impl MoveGenerator {
     fn add_pinned_pawn_pushes<P: PlayerTrait>(
         &self,
         move_list: &mut MoveList,
-        board: &Board,
         occupancy: u64,
         pinned_pos: usize,
         mask: u64,
@@ -1175,7 +1171,6 @@ impl MoveGenerator {
                 if king_sq.file() == pinned_sq.file() {
                     self.add_pinned_pawn_pushes::<P>(
                         move_list,
-                        board,
                         occupancy,
                         pinned_pos,
                         pin_move_mask & blockers,
