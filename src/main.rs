@@ -1,10 +1,12 @@
 mod engine;
 
 use engine::board::Board;
+use engine::perft::*;
 
 fn main() {
-    let board = Board::default();
+    let mut board = Board::default();
 
-    println!("{}", board);
-    println!("{}", board.to_fen());
+    println!("{}\n{}", board.to_string(), board.to_fen());
+
+    perft_divide(6, &mut board);
 }
