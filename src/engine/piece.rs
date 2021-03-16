@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 #[repr(usize)]
 #[derive(PartialEq, Clone, Copy, Debug)]
 pub enum Color {
@@ -27,6 +29,16 @@ impl Color {
     #[inline(always)]
     pub fn idx(&self) -> usize {
         *self as usize
+    }
+}
+
+impl Display for Color {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.is_white() {
+            write!(f, "White")
+        } else {
+            write!(f, "Black")
+        }
     }
 }
 
