@@ -1386,6 +1386,18 @@ impl MoveGenerator {
             self.gen_moves_for_player::<BlackPlayer>(board, move_list)
         }
     }
+
+    pub fn is_in_check(&self, board: &mut Board) -> bool {
+        let occupancy = board.get_occupancy();
+
+        if board.friendly_color().is_white() {
+            let king_pos = board.get_bb(Pieces::king(Color::White)).lsb_idx();
+            self.find_enemy_attackers::<WhitePlayer>(king_pos, board, occupancy) != 0
+        } else {
+            let king_pos = board.get_bb(Pieces::king(Color::Black)).lsb_idx();
+            self.find_enemy_attackers::<BlackPlayer>(king_pos, board, occupancy) != 0
+        }
+    }
 }
 
 /* -------------------------------------------------------------------------- */
