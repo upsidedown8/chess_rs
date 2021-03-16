@@ -38,12 +38,12 @@ impl Board {
         self.combined_bitboards.fill(0);
         self.pieces.fill(None);
     }
-    fn load_fen(&mut self, fen: &str) -> std::result::Result<(), &str> {
+    fn load_fen(&mut self, fen: &str) -> std::result::Result<(), String> {
         self.zero_boards();
 
         let args: Vec<&str> = fen.split_whitespace().collect();
         if args.len() != 6 {
-            return Err("Expected 6 whitespace delimited arguments");
+            return Err(String::from("Expected 6 whitespace delimited arguments"));
         }
 
         // parse board
@@ -79,7 +79,7 @@ impl Board {
                 }
 
                 '/' | ' ' => {}
-                _ => return Err("Unrecognised character in FEN"),
+                _ => return Err(String::from("Unrecognised character in FEN")),
             }
 
             if let Some(my_piece) = piece {
@@ -92,7 +92,7 @@ impl Board {
         }
 
         if square < 64 {
-            return Err("Expected 64 squares in FEN");
+            return Err(String::from("Expected 64 squares in FEN"));
         }
 
         // parse current player
@@ -101,9 +101,9 @@ impl Board {
             Some(c) => match c {
                 'w' => Color::White,
                 'b' => Color::Black,
-                _ => return Err("Expected w/b for current player"),
+                _ => return Err(String::from("Expected w/b for current player")),
             },
-            None => return Err("Expected w/b for current player"),
+            None => return Err(String::from("Expected w/b for current player")),
         };
 
         // parse castling rights
@@ -115,7 +115,7 @@ impl Board {
                 'Q' => self.castling |= WHITE_CASTLE_QS,
                 'K' => self.castling |= WHITE_CASTLE_KS,
                 '-' => break,
-                _ => return Err("Invalid character in castling rights"),
+                _ => return Err(String::from("Invalid character in castling rights")),
             }
         }
 
@@ -148,10 +148,6 @@ impl Board {
             | self.get_bb(Pieces::BlackKing);
 
         Ok(())
-    }
-
-    pub fn reset(&mut self) {
-        self.load_fen(STARTING_FEN);
     }
 
     pub fn make_move(&mut self, my_move: Move, info: &mut UndoInfo) {
@@ -620,14 +616,6 @@ impl Board {
     pub fn get_occupancy(&self) -> u64 {
         self.get_combined_bb(Color::White) | self.get_combined_bb(Color::Black)
     }
-    #[inline(always)]
-    pub fn get_friendly_occupancy(&self) -> u64 {
-        self.get_combined_bb(self.friendly_color())
-    }
-    #[inline(always)]
-    pub fn get_enemy_occupancy(&self) -> u64 {
-        self.get_combined_bb(self.enemy_color())
-    }
 
     pub fn to_fen(&self) -> String {
         let mut result = String::new();
@@ -703,7 +691,7 @@ impl Board {
         result
     }
 
-    pub fn new(fen: &str) -> Board {
+    pub fn new(fen: &str) -> std::result::Result<Board, String> {
         let mut board = Board {
             current_color: Color::White,
             fifty_move: 0,
@@ -715,15 +703,20 @@ impl Board {
             combined_bitboards: [0; 2],
         };
 
-        board.load_fen(fen);
-
-        board
+        match board.load_fen(fen) {
+            Ok(()) => {
+                Ok(board)
+            },
+            Err(msg) => {
+                Err(msg)
+            }
+        }
     }
 }
 
 impl Default for Board {
     fn default() -> Board {
-        Board::new(STARTING_FEN)
+        Board::new(STARTING_FEN).unwrap()
     }
 }
 
@@ -758,11 +751,13 @@ impl Display for Board {
 
 #[cfg(test)]
 mod tests {
+    use crate::engine::movegen::{MoveGenerator, MoveList};
+
     use super::*;
 
     fn fen_test(fen: &str) -> bool {
-        let board = Board::new(fen);
-        board.to_fen() == *fen
+        let board = Board::new(fen).unwrap();
+        board.to_fen().eq(fen)
     }
 
     #[test]
@@ -793,29 +788,23 @@ mod tests {
     }
 
     fn undo_test(fen: &str) -> bool {
-        /*
-
-        let moves: [Move; 256] = [Move::new(), 256];
-
-        let board = Board::new(fen);
+        let mut board = Board::new(fen).unwrap();
+        let mut move_list = MoveList::new();
         let generator = MoveGenerator::new();
-        let num_moves = generator.moves(&board, )
+        
+        generator.gen_moves(&mut board, &mut move_list);
 
-        let info: UndoIndo = Default::default();
-        for i in 0..num_moves {
-            let mut test_board = Board::new(fen);
+        let mut info = UndoInfo::default();
+        for i in 0..move_list.len() {
+            let mut test_board = Board::new(fen).unwrap();
 
-            test_board.make_move(moves[i], &mut info);
-            test_board.undo_move(moves[i], &info);
+            test_board.make_move(move_list.at(i), &mut info);
+            test_board.undo_move(move_list.at(i), &info);
 
             if test_board != board {
                 return false;
             }
         }
-
-        true
-
-         */
 
         true
     }
@@ -863,9 +852,9 @@ mod tests {
         assert!(undo_test(
             "r2q1rk1/pP1p2pp/Q4n2/bbp1p3/Np6/1B3NBn/pPPP1PPP/R3K2R b KQ - 0 1"
         ));
-        assert!(undo_test("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -"));
+        assert!(undo_test("8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - - 0 1"));
         assert!(undo_test(
-            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -"
+            "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - 0 1"
         ));
         assert!(undo_test(
             "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
