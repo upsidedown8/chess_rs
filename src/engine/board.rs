@@ -16,20 +16,24 @@ pub const BLACK_CASTLE: u8 = BLACK_CASTLE_KS | BLACK_CASTLE_QS;
 
 pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone, Copy)]
 pub struct Board {
     current_color: Color,
 
     fifty_move: usize,
     full_move_count: usize,
 
-    pub castling: u8,
+    castling: u8,
     pub en_passant: Option<Square>,
 
     pub pieces: [Option<Pieces>; 64],
 
     piece_bitboards: [u64; 12],
     combined_bitboards: [u64; 2],
+
+    zobrist_table: [[u64; 12]; 64],
+
+    zobrist_hash: u64,
 }
 
 impl Board {
@@ -150,6 +154,18 @@ impl Board {
         Ok(())
     }
 
+    pub fn hash(&self) -> u64 {
+        self.zobrist_hash
+    }
+
+    pub fn rand_zobrist_table(&mut self, rng: &mut impl rand::Rng) {
+        for sq in 0..64 {
+            for piece in 0..12 {
+                self.zobrist_table[sq][piece] = rng.gen();
+            }
+        }
+    }
+
     pub fn make_move(&mut self, my_move: Move, info: &mut UndoInfo) {
         // load data from move
         let start = my_move.get_move_start() as usize;
@@ -180,6 +196,9 @@ impl Board {
         debug_assert!(start_piece.color() == self.friendly_color());
         debug_assert!(end_piece.is_none() || start_piece.color() != end_piece.unwrap().color());
 
+        // remove start piece from start square
+        self.zobrist_hash ^= self.zobrist_table[start][start_piece.idx()];
+
         // update fifty_move
         if self.pieces[start].unwrap().is_pawn() || self.pieces[end].is_some() {
             self.fifty_move = 0;
@@ -195,6 +214,11 @@ impl Board {
                 let friendly_pawn = Pieces::pawn(friendly_color);
                 let enemy_pawn = Pieces::pawn(enemy_color);
                 let en_passant_sq = self.en_passant.unwrap().sq();
+                
+                // add start piece to en_passant square
+                self.zobrist_hash ^= self.zobrist_table[en_passant_sq][friendly_pawn.idx()];
+                // remove end piece from end square
+                self.zobrist_hash ^= self.zobrist_table[end][enemy_pawn.idx()];
 
                 // friendly piece bb
                 self.get_bb_mut(friendly_pawn)
@@ -223,6 +247,9 @@ impl Board {
                 let friendly_king = Pieces::king(friendly_color);
                 let friendly_rook = Pieces::rook(friendly_color);
 
+                // add king to end square
+                self.zobrist_hash ^= self.zobrist_table[end][friendly_king.idx()];
+                
                 debug_assert_eq!(start_piece, friendly_king);
 
                 // friendly king bb
@@ -241,6 +268,11 @@ impl Board {
                         debug_assert!(self.can_castle_qs(friendly_color));
                         debug_assert!(self.pieces[offset].is_some());
                         debug_assert_eq!(self.pieces[offset].unwrap(), friendly_rook);
+
+                        // remove rook from start square
+                        self.zobrist_hash ^= self.zobrist_table[offset][friendly_rook.idx()];
+                        // add rook to end square
+                        self.zobrist_hash ^= self.zobrist_table[offset + 3][friendly_rook.idx()];
 
                         // friendly rook bb
                         self.get_bb_mut(friendly_rook)
@@ -261,6 +293,11 @@ impl Board {
                         debug_assert!(self.can_castle_ks(friendly_color));
                         debug_assert!(self.pieces[offset + 7].is_some());
                         debug_assert_eq!(self.pieces[offset + 7].unwrap(), friendly_rook);
+
+                        // remove rook from start square
+                        self.zobrist_hash ^= self.zobrist_table[offset + 7][friendly_rook.idx()];
+                        // add rook to end square
+                        self.zobrist_hash ^= self.zobrist_table[offset + 5][friendly_rook.idx()];
 
                         // friendly rook bb
                         self.get_bb_mut(friendly_rook)
@@ -303,6 +340,9 @@ impl Board {
 
                 // clear the end piece if this is a capture
                 if let Some(end_piece) = end_piece {
+                    // remove enemy piece from end square
+                    self.zobrist_hash ^= self.zobrist_table[end][end_piece.idx()];
+
                     // enemy piece bb
                     self.get_bb_mut(end_piece).clear_bit(end);
 
@@ -314,6 +354,9 @@ impl Board {
                         self.disable_castle_from_sq(end);
                     }
                 }
+                
+                // add promotion piece to end square
+                self.zobrist_hash ^= self.zobrist_table[end][promotion_piece.idx()];
 
                 // friendly piece bb for pawn and promotion piece
                 self.get_bb_mut(friendly_pawn).clear_bit(start);
@@ -337,6 +380,9 @@ impl Board {
                 };
 
                 if let Some(end_piece) = end_piece {
+                    // remove enemy piece from end square
+                    self.zobrist_hash ^= self.zobrist_table[end][end_piece.idx()];
+
                     // enemy piece bb
                     self.get_bb_mut(end_piece).clear_bit(end);
 
@@ -357,6 +403,9 @@ impl Board {
                 else if start_piece.is_rook() {
                     self.disable_castle_from_sq(start);
                 }
+
+                // add friendly piece to end square
+                self.zobrist_hash ^= self.zobrist_table[end][start_piece.idx()];
 
                 // friendly piece bb
                 self.get_bb_mut(start_piece).clear_bit(start).set_bit(end);
@@ -412,6 +461,13 @@ impl Board {
                 let enemy_pawn = Pieces::pawn(enemy_color);
                 let en_passant_sq = self.en_passant.unwrap().sq();
 
+                // add start piece to start square
+                self.zobrist_hash ^= self.zobrist_table[start][friendly_pawn.idx()];
+                // remove start piece from en_passant square
+                self.zobrist_hash ^= self.zobrist_table[en_passant_sq][friendly_pawn.idx()];
+                // add end piece to end square
+                self.zobrist_hash ^= self.zobrist_table[end][enemy_pawn.idx()];
+
                 debug_assert!(self.pieces[end].is_none());
                 debug_assert!(self.en_passant.is_some());
                 debug_assert!(self.pieces[self.en_passant.unwrap().sq()] == Some(friendly_pawn));
@@ -443,6 +499,11 @@ impl Board {
 
                 debug_assert_eq!(end_piece.unwrap(), friendly_king);
 
+                // add friendly king to start square
+                self.zobrist_hash ^= self.zobrist_table[start][friendly_king.idx()];
+                // remove friendly king from end square
+                self.zobrist_hash ^= self.zobrist_table[end][friendly_king.idx()];
+
                 // friendly piece bb
                 self.get_bb_mut(friendly_king).set_bit(start).clear_bit(end);
 
@@ -459,6 +520,11 @@ impl Board {
                 match piece {
                     // queenside
                     super::r#move::MOVE_CASTLE_SIDE_QS => {
+                        // add rook to start square
+                        self.zobrist_hash ^= self.zobrist_table[offset][friendly_rook.idx()];
+                        // remove rook from end square
+                        self.zobrist_hash ^= self.zobrist_table[offset + 3][friendly_rook.idx()];
+
                         // friendly rook bb
                         self.get_bb_mut(friendly_rook)
                             .set_bit(offset)
@@ -475,6 +541,11 @@ impl Board {
                     }
                     // kingside
                     _ => {
+                        // add rook to start square
+                        self.zobrist_hash ^= self.zobrist_table[offset + 7][friendly_rook.idx()];
+                        // remove rook from end square
+                        self.zobrist_hash ^= self.zobrist_table[offset + 5][friendly_rook.idx()];
+
                         // friendly rook bb
                         self.get_bb_mut(friendly_rook)
                             .set_bit(offset + 7)
@@ -494,6 +565,11 @@ impl Board {
             super::r#move::MOVE_TYPE_PROMOTION => {
                 let friendly_pawn = Pieces::pawn(friendly_color);
                 let promotion_piece = self.pieces[end].unwrap();
+                
+                // add friendly pawn to start square
+                self.zobrist_hash ^= self.zobrist_table[start][friendly_pawn.idx()];
+                // remove promotion piece from end square
+                self.zobrist_hash ^= self.zobrist_table[end][promotion_piece.idx()];
 
                 // friendly piece bb
                 self.get_bb_mut(friendly_pawn).set_bit(start);
@@ -509,6 +585,9 @@ impl Board {
                 self.pieces[end] = captured_piece;
 
                 if let Some(captured_piece) = captured_piece {
+                    // remove captured piece from end square
+                    self.zobrist_hash ^= self.zobrist_table[end][captured_piece.idx()];
+                    
                     // enemy piece bb
                     self.get_bb_mut(captured_piece).set_bit(end);
 
@@ -517,8 +596,15 @@ impl Board {
                 }
             }
             _ => {
+                let end_piece = end_piece.unwrap();
+
+                // add friendly piece to start square
+                self.zobrist_hash ^= self.zobrist_table[start][end_piece.idx()];
+                // remove friendly piece from end square
+                self.zobrist_hash ^= self.zobrist_table[end][end_piece.idx()];
+
                 // friendly piece bb
-                self.get_bb_mut(end_piece.unwrap())
+                self.get_bb_mut(end_piece)
                     .set_bit(start)
                     .clear_bit(end);
 
@@ -532,6 +618,9 @@ impl Board {
                 self.pieces[end] = captured_piece;
 
                 if let Some(captured_piece) = captured_piece {
+                    // remove captured piece from end square
+                    self.zobrist_hash ^= self.zobrist_table[end][captured_piece.idx()];
+
                     // enemy piece bb
                     self.get_bb_mut(captured_piece).set_bit(end);
 
@@ -701,10 +790,22 @@ impl Board {
             pieces: [None; 64],
             piece_bitboards: [0; 12],
             combined_bitboards: [0; 2],
+            zobrist_table: [[0; 12]; 64],
+            zobrist_hash: 0,
         };
 
+        // init zobrist table
+        board.rand_zobrist_table(&mut rand::thread_rng());
+
+        // load fen
         match board.load_fen(fen) {
             Ok(()) => {
+                // init zobrist hash
+                for sq in 0..64 {
+                    if let Some(piece) = board.pieces[sq] {
+                        board.zobrist_hash ^= board.zobrist_table[sq][piece.idx()]
+                    }
+                }
                 Ok(board)
             },
             Err(msg) => {
@@ -752,7 +853,6 @@ impl Display for Board {
 #[cfg(test)]
 mod tests {
     use crate::engine::movegen::{MoveGenerator, MoveList};
-
     use super::*;
 
     fn fen_test(fen: &str) -> bool {
@@ -789,6 +889,7 @@ mod tests {
 
     fn undo_test(fen: &str) -> bool {
         let mut board = Board::new(fen).unwrap();
+
         let mut move_list = MoveList::new();
         let generator = MoveGenerator::new();
         
@@ -796,12 +897,13 @@ mod tests {
 
         let mut info = UndoInfo::default();
         for i in 0..move_list.len() {
-            let mut test_board = Board::new(fen).unwrap();
+            let mut test_board = board;
 
             test_board.make_move(move_list.at(i), &mut info);
             test_board.undo_move(move_list.at(i), &info);
 
             if test_board != board {
+                println!("{}", move_list.at(i).move_to_string());
                 return false;
             }
         }
