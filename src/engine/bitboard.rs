@@ -36,8 +36,8 @@ pub trait BitBoardUtils {
 
     fn count_1s(&self) -> usize;
 
-    fn set_bit(&mut self, idx: usize);
-    fn clear_bit(&mut self, idx: usize);
+    fn set_bit(&mut self, idx: usize) -> &mut Self;
+    fn clear_bit(&mut self, idx: usize) -> &mut Self;
 
     fn is_bit_set(&self, idx: usize) -> bool;
 
@@ -52,7 +52,7 @@ impl BitBoardUtils for u64 {
         let folded = (b & 0xffffffff) ^ (b >> 32);
         *self &= *self - 1;
         let idx = ((folded * 0x783A9B23) >> 26) as usize;
-        LSB_64_TABLE[idx]
+        LSB_64_TABLE[idx & 0b111111]
     }
 
     #[inline(always)]
@@ -61,7 +61,7 @@ impl BitBoardUtils for u64 {
         let b = *self ^ (*self - 1);
         let folded = (b & 0xffffffff) ^ (b >> 32);
         let idx = ((folded * 0x783A9B23) >> 26) as usize;
-        LSB_64_TABLE[idx]
+        LSB_64_TABLE[idx & 0b111111]
     }
 
     #[inline(always)]
@@ -76,13 +76,15 @@ impl BitBoardUtils for u64 {
     }
 
     #[inline(always)]
-    fn set_bit(&mut self, idx: usize) {
+    fn set_bit(&mut self, idx: usize) -> &mut u64 {
         *self |= 1 << idx;
+        self
     }
 
     #[inline(always)]
-    fn clear_bit(&mut self, idx: usize) {
+    fn clear_bit(&mut self, idx: usize) -> &mut u64 {
         *self &= !(1 << idx);
+        self
     }
 
     #[inline(always)]
@@ -91,10 +93,7 @@ impl BitBoardUtils for u64 {
     }
 
     fn bb_to_string(&self) -> String {
-        let mut result = concat!(
-            "    a b c d e f g h\n",
-            "  ╭─────────────────╮\n"
-        ).to_string();
+        let mut result = concat!("    a b c d e f g h\n", "  ╭─────────────────╮\n").to_string();
 
         for rank in 0..8 {
             result.push_str(&format!("{} │ ", 8 - rank));
@@ -111,10 +110,7 @@ impl BitBoardUtils for u64 {
             result.push_str(&format!("│ {}\n", 8 - rank));
         }
 
-        result.push_str(concat!(
-            "  ╰─────────────────╯\n",
-            "    a b c d e f g h"
-        ));
+        result.push_str(concat!("  ╰─────────────────╯\n", "    a b c d e f g h"));
 
         result
     }
