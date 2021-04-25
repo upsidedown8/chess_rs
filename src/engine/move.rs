@@ -86,4 +86,6 @@ pub struct UndoInfo {
     pub fifty_move: usize,
     pub en_passant: Option<Square>,
     pub captured: Option<Pieces>,
+    pub zobrist: u64,
+    pub evalutor_diff: i32,
 }

@@ -4,13 +4,15 @@ use engine::{board::Board, eval::Evaluator, movegen::{MoveGenerator, MoveList}};
 use engine::search;
 use engine::r#move::{MoveUtils, UndoInfo};
 use engine::perft;
+use engine::uci;
 
-const MAX_DEPTH: usize = 6;
 
-fn main() {
+fn two_player_console() {
+    const MAX_DEPTH: usize = 6;
+
     // setup
     let move_generator = MoveGenerator::new();
-    let evaluator = Evaluator {};
+    let mut evaluator = Evaluator::default();
     let mut move_lists = Vec::new();
     for _ in 0..MAX_DEPTH {
         move_lists.push(MoveList::new());
@@ -49,7 +51,7 @@ fn main() {
                 if my_move == 0 {
                     panic!("Illegal move entered");
                 }
-            } else if let Some(best_move) = search::best_move(MAX_DEPTH, &mut board, &evaluator, &move_generator, &mut move_lists) {
+            } else if let Some((best_move, _)) = search::find_best_move(MAX_DEPTH, &mut board, &mut evaluator, &move_generator, &mut move_lists) {
                 my_move = best_move;
             }
             
@@ -64,7 +66,9 @@ fn main() {
             
             break;
         }
-
     }
+}
 
+fn main() {
+    uci::uci();
 }

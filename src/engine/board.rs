@@ -3,6 +3,7 @@ use std::fmt::{Display, Formatter, Result};
 use crate::engine::piece::{Color, Pieces};
 use crate::engine::r#move::{Move, MoveUtils, UndoInfo};
 use crate::engine::square::Square;
+use crate::engine::eval::Evaluator;
 
 use super::bitboard::BitBoardUtils;
 
@@ -20,8 +21,9 @@ pub const STARTING_FEN: &str = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQ
 pub struct Board {
     current_color: Color,
 
-    fifty_move: usize,
+    pub fifty_move: usize,
     full_move_count: usize,
+    half_move_count: usize,
 
     castling: u8,
     pub en_passant: Option<Square>,
@@ -34,6 +36,8 @@ pub struct Board {
     zobrist_table: [[u64; 12]; 64],
 
     zobrist_hash: u64,
+
+    hash_history: [u64; 512],
 }
 
 impl Board {
@@ -42,7 +46,8 @@ impl Board {
         self.combined_bitboards.fill(0);
         self.pieces.fill(None);
     }
-    fn load_fen(&mut self, fen: &str) -> std::result::Result<(), String> {
+    pub fn load_fen(&mut self, fen: &str) -> std::result::Result<(), String> {
+        self.half_move_count = 0;
         self.zero_boards();
 
         let args: Vec<&str> = fen.split_whitespace().collect();
@@ -167,6 +172,9 @@ impl Board {
     }
 
     pub fn make_move(&mut self, my_move: Move, info: &mut UndoInfo) {
+        self.hash_history[self.half_move_count] = self.hash();
+        self.half_move_count += 1;
+
         // load data from move
         let start = my_move.get_move_start() as usize;
         let end = my_move.get_move_end() as usize;
@@ -181,6 +189,7 @@ impl Board {
         info.fifty_move = self.fifty_move;
         info.en_passant = self.en_passant;
         info.captured = self.pieces[end];
+        info.zobrist = self.zobrist_hash;
 
         // store start and end pieces
         let start_piece = self.pieces[start];
@@ -242,6 +251,9 @@ impl Board {
                 self.pieces[end] = None;
 
                 self.en_passant = None;
+
+                // evaluator diff
+                info.evalutor_diff = Evaluator::en_passant_diff(start, en_passant_sq, end, friendly_pawn);
             }
             super::r#move::MOVE_TYPE_CASTLE => {
                 let friendly_king = Pieces::king(friendly_color);
@@ -287,6 +299,9 @@ impl Board {
                         // pieces array
                         self.pieces[offset + 3] = Some(friendly_rook);
                         self.pieces[offset] = None;
+
+                        // evaluator diff
+                        info.evalutor_diff = Evaluator::castle_diff(start, end, offset, offset + 3, friendly_color);
                     }
                     // kingside
                     _ => {
@@ -312,6 +327,9 @@ impl Board {
                         // pieces array
                         self.pieces[offset + 5] = Some(friendly_rook);
                         self.pieces[offset + 7] = None;
+                        
+                        // evaluator diff
+                        info.evalutor_diff = Evaluator::castle_diff(start, end, offset + 7, offset + 5, friendly_color);
                     }
                 };
 
@@ -353,6 +371,12 @@ impl Board {
                     if end_piece.is_rook() {
                         self.disable_castle_from_sq(end);
                     }
+
+                    // evaluator diff
+                    info.evalutor_diff = Evaluator::promotion_diff(start, end, promotion_piece, Some(end_piece), friendly_color);
+                } else {
+                    // evaluator diff
+                    info.evalutor_diff = Evaluator::promotion_diff(start, end, promotion_piece, None, friendly_color);
                 }
                 
                 // add promotion piece to end square
@@ -393,6 +417,13 @@ impl Board {
                     if end_piece.is_rook() {
                         self.disable_castle_from_sq(end);
                     }
+
+                    // evaluator diff
+                    info.evalutor_diff = Evaluator::standard_diff(start, end, start_piece, Some(end_piece));
+
+                } else {
+                    // evaluator diff
+                    info.evalutor_diff = Evaluator::standard_diff(start, end, start_piece, None);
                 }
 
                 // if the king moves then that player cannot castle
@@ -424,6 +455,8 @@ impl Board {
         self.current_color = self.current_color.enemy();
     }
     pub fn undo_move(&mut self, my_move: Move, info: &UndoInfo) {
+        self.half_move_count -= 1;
+
         // load data from move
         let start = my_move.get_move_start() as usize;
         let end = my_move.get_move_end() as usize;
@@ -438,6 +471,7 @@ impl Board {
         self.castling = info.castling;
         self.fifty_move = info.fifty_move;
         self.en_passant = info.en_passant;
+        self.zobrist_hash = info.zobrist;
         let captured_piece = info.captured;
 
         // store end piece
@@ -460,13 +494,6 @@ impl Board {
                 let friendly_pawn = Pieces::pawn(friendly_color);
                 let enemy_pawn = Pieces::pawn(enemy_color);
                 let en_passant_sq = self.en_passant.unwrap().sq();
-
-                // add start piece to start square
-                self.zobrist_hash ^= self.zobrist_table[start][friendly_pawn.idx()];
-                // remove start piece from en_passant square
-                self.zobrist_hash ^= self.zobrist_table[en_passant_sq][friendly_pawn.idx()];
-                // add end piece to end square
-                self.zobrist_hash ^= self.zobrist_table[end][enemy_pawn.idx()];
 
                 debug_assert!(self.pieces[end].is_none());
                 debug_assert!(self.en_passant.is_some());
@@ -499,11 +526,6 @@ impl Board {
 
                 debug_assert_eq!(end_piece.unwrap(), friendly_king);
 
-                // add friendly king to start square
-                self.zobrist_hash ^= self.zobrist_table[start][friendly_king.idx()];
-                // remove friendly king from end square
-                self.zobrist_hash ^= self.zobrist_table[end][friendly_king.idx()];
-
                 // friendly piece bb
                 self.get_bb_mut(friendly_king).set_bit(start).clear_bit(end);
 
@@ -520,11 +542,6 @@ impl Board {
                 match piece {
                     // queenside
                     super::r#move::MOVE_CASTLE_SIDE_QS => {
-                        // add rook to start square
-                        self.zobrist_hash ^= self.zobrist_table[offset][friendly_rook.idx()];
-                        // remove rook from end square
-                        self.zobrist_hash ^= self.zobrist_table[offset + 3][friendly_rook.idx()];
-
                         // friendly rook bb
                         self.get_bb_mut(friendly_rook)
                             .set_bit(offset)
@@ -541,11 +558,6 @@ impl Board {
                     }
                     // kingside
                     _ => {
-                        // add rook to start square
-                        self.zobrist_hash ^= self.zobrist_table[offset + 7][friendly_rook.idx()];
-                        // remove rook from end square
-                        self.zobrist_hash ^= self.zobrist_table[offset + 5][friendly_rook.idx()];
-
                         // friendly rook bb
                         self.get_bb_mut(friendly_rook)
                             .set_bit(offset + 7)
@@ -565,11 +577,6 @@ impl Board {
             super::r#move::MOVE_TYPE_PROMOTION => {
                 let friendly_pawn = Pieces::pawn(friendly_color);
                 let promotion_piece = self.pieces[end].unwrap();
-                
-                // add friendly pawn to start square
-                self.zobrist_hash ^= self.zobrist_table[start][friendly_pawn.idx()];
-                // remove promotion piece from end square
-                self.zobrist_hash ^= self.zobrist_table[end][promotion_piece.idx()];
 
                 // friendly piece bb
                 self.get_bb_mut(friendly_pawn).set_bit(start);
@@ -585,9 +592,6 @@ impl Board {
                 self.pieces[end] = captured_piece;
 
                 if let Some(captured_piece) = captured_piece {
-                    // remove captured piece from end square
-                    self.zobrist_hash ^= self.zobrist_table[end][captured_piece.idx()];
-                    
                     // enemy piece bb
                     self.get_bb_mut(captured_piece).set_bit(end);
 
@@ -597,11 +601,6 @@ impl Board {
             }
             _ => {
                 let end_piece = end_piece.unwrap();
-
-                // add friendly piece to start square
-                self.zobrist_hash ^= self.zobrist_table[start][end_piece.idx()];
-                // remove friendly piece from end square
-                self.zobrist_hash ^= self.zobrist_table[end][end_piece.idx()];
 
                 // friendly piece bb
                 self.get_bb_mut(end_piece)
@@ -618,9 +617,6 @@ impl Board {
                 self.pieces[end] = captured_piece;
 
                 if let Some(captured_piece) = captured_piece {
-                    // remove captured piece from end square
-                    self.zobrist_hash ^= self.zobrist_table[end][captured_piece.idx()];
-
                     // enemy piece bb
                     self.get_bb_mut(captured_piece).set_bit(end);
 
@@ -629,6 +625,39 @@ impl Board {
                 }
             }
         }
+    }
+
+    pub fn is_threefold_repetition(&self) -> bool {
+        let mut count = 0;
+        let mut i = self.half_move_count - self.fifty_move;
+        while i < self.half_move_count {
+            if self.zobrist_hash == self.hash_history[i] {
+                count += 1;
+            }
+            i += 1;
+        }
+        count >= 3
+    }
+    pub fn is_low_material(&self) -> bool {
+        /*
+            king versus king
+            king and bishop versus king
+            king and knight versus king
+            king and bishop versus king and bishop with the bishops on the same color.
+        */
+        false
+    }
+    pub fn is_draw_by_fifty_move(&self) -> bool {
+        self.fifty_move >= 100
+    }
+    pub fn is_draw(&self) -> bool {
+        self.is_draw_by_fifty_move() ||
+        self.is_threefold_repetition() ||
+        self.is_low_material()
+    }
+
+    pub fn reset(&mut self) {
+        self.load_fen(STARTING_FEN).unwrap();
     }
 
     #[inline(always)]
@@ -785,6 +814,7 @@ impl Board {
             current_color: Color::White,
             fifty_move: 0,
             full_move_count: 0,
+            half_move_count: 0,
             castling: 0b1111,
             en_passant: None,
             pieces: [None; 64],
@@ -792,6 +822,7 @@ impl Board {
             combined_bitboards: [0; 2],
             zobrist_table: [[0; 12]; 64],
             zobrist_hash: 0,
+            hash_history: [0; 512],
         };
 
         // init zobrist table

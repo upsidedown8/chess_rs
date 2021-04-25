@@ -96,6 +96,24 @@ impl Pieces {
         }
     }
 
+    pub fn symbol(&self) -> char {
+        match *self {
+            Pieces::WhitePawn => '♙',
+            Pieces::WhiteKnight => '♘',
+            Pieces::WhiteBishop => '♗',
+            Pieces::WhiteRook => '♖',
+            Pieces::WhiteQueen => '♕',
+            Pieces::WhiteKing => '♔',
+
+            Pieces::BlackPawn => '♟',
+            Pieces::BlackKnight => '♞',
+            Pieces::BlackBishop => '♝',
+            Pieces::BlackRook => '♜',
+            Pieces::BlackQueen => '♛',
+            Pieces::BlackKing => '♚',
+        }
+    }
+
     #[inline(always)]
     pub fn idx(&self) -> usize {
         *self as usize

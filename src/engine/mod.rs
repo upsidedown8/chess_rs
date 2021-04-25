@@ -7,3 +7,4 @@ pub mod perft;
 pub mod piece;
 pub mod search;
 pub mod square;
+pub mod uci;

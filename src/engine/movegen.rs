@@ -6,7 +6,7 @@ use crate::engine::piece::{Color, Pieces};
 use crate::engine::r#move::*;
 use crate::engine::square::Square;
 
-use super::bitboard::FULL_BB;
+use super::{bitboard::FULL_BB, eval::Evaluator};
 
 trait PlayerTrait {
     fn color() -> Color;
@@ -71,7 +71,7 @@ impl PlayerTrait for BlackPlayer {
     fn enemy() -> Color {
         Color::White
     }
-    
+
     #[inline(always)]
     fn is_white() -> bool {
         false
@@ -156,14 +156,14 @@ impl Files {
 }
 
 pub struct MoveList {
-    moves: Vec<Move>,
+    moves: Vec<(Move, i32)>,
 }
 
 impl MoveList {
     #[inline(always)]
     pub fn add_move_with_flags(&mut self, start: usize, end: usize, flags: u16) {
         self.moves
-            .push(Move::new_move(start as u16, end as u16, flags));
+            .push((Move::new_move(start as u16, end as u16, flags), 0));
     }
 
     #[inline(always)]
@@ -205,7 +205,36 @@ impl MoveList {
 
     #[inline(always)]
     pub fn at(&self, idx: usize) -> Move {
-        self.moves[idx]
+        self.moves[idx].0
+    }
+
+    pub fn order_moves(&mut self, board: &Board) {
+        // score the moves
+        for item in &mut self.moves {
+            let my_move = &item.0;
+
+            // score the promotion piece
+            if my_move.get_move_type() == super::r#move::MOVE_TYPE_PROMOTION {
+                item.1 += match my_move.get_move_piece() {
+                    super::r#move::MOVE_PROMOTION_PIECE_KNIGHT => 315,
+                    super::r#move::MOVE_PROMOTION_PIECE_BISHOP => 325,
+                    super::r#move::MOVE_PROMOTION_PIECE_ROOK => 500,
+                    super::r#move::MOVE_PROMOTION_PIECE_QUEEN => 900,
+                    _ => panic!("Couldn't match the promotion piece"),
+                };
+            }
+
+            // score a capture
+            let end = my_move.get_move_end() as usize;
+            if let Some(piece) = board.pieces[end] {
+                let start = my_move.get_move_start() as usize;
+                item.1 += Evaluator::piece_value(piece)
+                    - Evaluator::piece_value(board.pieces[start].unwrap());
+            }
+        }
+
+        // sort the moves
+        self.moves.sort_by(|&a, &b| a.1.cmp(&b.1));
     }
 }
 
@@ -214,11 +243,7 @@ impl Display for MoveList {
         let mut result = String::new();
 
         for (i, &my_move) in self.moves.iter().enumerate() {
-            result.push_str(&format!(
-                "{}: {}\n",
-                i+1,
-                my_move.move_to_string()
-            ));
+            result.push_str(&format!("{}: {}\n", i + 1, my_move.0.move_to_string()));
         }
 
         write!(f, "{}", result)
@@ -534,12 +559,14 @@ impl MoveGenerator {
             // rook & bishop move tables
             for idx in 0..(1 << self.rook_masks[i].count_1s()) {
                 let indexed_mask = self.idx_to_u64(idx, self.rook_masks[i]);
-                let key = u64::wrapping_mul(ROOK_MAGICS[i], indexed_mask) >> self.rook_magic_shifts[i];
+                let key =
+                    u64::wrapping_mul(ROOK_MAGICS[i], indexed_mask) >> self.rook_magic_shifts[i];
                 self.rook_moves[i][key as usize] = self.gen_rook_moves(sq, indexed_mask);
             }
             for idx in 0..(1 << self.bishop_masks[i].count_1s()) {
                 let indexed_mask = self.idx_to_u64(idx, self.bishop_masks[i]);
-                let key = u64::wrapping_mul(BISHOP_MAGICS[i], indexed_mask) >> self.bishop_magic_shifts[i];
+                let key = u64::wrapping_mul(BISHOP_MAGICS[i], indexed_mask)
+                    >> self.bishop_magic_shifts[i];
                 self.bishop_moves[i][key as usize] = self.gen_bishop_moves(sq, indexed_mask);
             }
 
@@ -578,22 +605,21 @@ impl MoveGenerator {
 
                 // same rank
                 if min_sq.rank() == max_sq.rank() {
-                    for f in min_sq.file()+1..max_sq.file() {
-                        self.slider_range[start][end].set_bit(Square::from_rf(min_sq.rank(), f).sq());
+                    for f in min_sq.file() + 1..max_sq.file() {
+                        self.slider_range[start][end]
+                            .set_bit(Square::from_rf(min_sq.rank(), f).sq());
                     }
                 }
-                
                 // same file
                 else if min_sq.file() == max_sq.file() {
-                    for r in min_sq.rank()+1..max_sq.rank() {
-                        self.slider_range[start][end].set_bit(Square::from_rf(r, min_sq.file()).sq());
+                    for r in min_sq.rank() + 1..max_sq.rank() {
+                        self.slider_range[start][end]
+                            .set_bit(Square::from_rf(r, min_sq.file()).sq());
                     }
-                }
-                
-                else {
+                } else {
                     let rank_diff = max_sq.rank() as i16 - min_sq.rank() as i16;
                     let file_diff = max_sq.file() as i16 - min_sq.file() as i16;
-                    
+
                     // diagonal
                     if rank_diff.abs() == file_diff.abs() {
                         // negative gradient
@@ -606,7 +632,6 @@ impl MoveGenerator {
                                 f += 1;
                             }
                         }
-                        
                         // positive gradient
                         else {
                             let mut r = min_sq.rank() + 1;
@@ -616,7 +641,6 @@ impl MoveGenerator {
                                 r += 1;
                                 f -= 1;
                             }
-
                         }
                     }
                 }
@@ -675,21 +699,24 @@ impl MoveGenerator {
     }
 
     #[inline(always)]
-    fn find_enemy_attackers<P: PlayerTrait>(&self, sq: usize, board: &Board, occupancy: u64) -> u64 {
-        let bishop_queen = board.get_bb(Pieces::bishop(P::enemy()))
-            | board.get_bb(Pieces::queen(P::enemy()));
-        let rook_queen = board.get_bb(Pieces::rook(P::enemy()))
-            | board.get_bb(Pieces::queen(P::enemy()));
+    fn find_enemy_attackers<P: PlayerTrait>(
+        &self,
+        sq: usize,
+        board: &Board,
+        occupancy: u64,
+    ) -> u64 {
+        let bishop_queen =
+            board.get_bb(Pieces::bishop(P::enemy())) | board.get_bb(Pieces::queen(P::enemy()));
+        let rook_queen =
+            board.get_bb(Pieces::rook(P::enemy())) | board.get_bb(Pieces::queen(P::enemy()));
 
         let mut attacking_pieces = (self.magic_bishop_moves(sq, occupancy) & bishop_queen)
             | (self.magic_rook_moves(sq, occupancy) & rook_queen);
 
         // knights
-        attacking_pieces |= (self.knight_moves[sq]
-            & board.get_bb(Pieces::knight(P::enemy())))
+        attacking_pieces |= (self.knight_moves[sq] & board.get_bb(Pieces::knight(P::enemy())))
             | (self.king_moves[sq] & board.get_bb(Pieces::king(P::enemy())))
-            | (self.pawn_attacks[P::color().idx()][sq]
-                & board.get_bb(Pieces::pawn(P::enemy())));
+            | (self.pawn_attacks[P::color().idx()][sq] & board.get_bb(Pieces::pawn(P::enemy())));
 
         attacking_pieces
     }
@@ -697,21 +724,19 @@ impl MoveGenerator {
     fn is_sq_under_attack<P: PlayerTrait>(&self, sq: usize, board: &Board, occupancy: u64) -> bool {
         if self.knight_moves[sq] & board.get_bb(Pieces::knight(P::enemy())) != 0
             || self.king_moves[sq] & board.get_bb(Pieces::king(P::enemy())) != 0
-            || self.pawn_attacks[P::color().idx()][sq]
-                & board.get_bb(Pieces::pawn(P::enemy()))
-                != 0
+            || self.pawn_attacks[P::color().idx()][sq] & board.get_bb(Pieces::pawn(P::enemy())) != 0
         {
             return true;
         }
 
-        let bishop_queen = board.get_bb(Pieces::bishop(P::enemy()))
-            | board.get_bb(Pieces::queen(P::enemy()));
+        let bishop_queen =
+            board.get_bb(Pieces::bishop(P::enemy())) | board.get_bb(Pieces::queen(P::enemy()));
         if self.magic_bishop_moves(sq, occupancy) & bishop_queen != 0 {
             return true;
         }
 
-        let rook_queen = board.get_bb(Pieces::rook(P::enemy()))
-            | board.get_bb(Pieces::queen(P::enemy()));
+        let rook_queen =
+            board.get_bb(Pieces::rook(P::enemy())) | board.get_bb(Pieces::queen(P::enemy()));
         self.magic_rook_moves(sq, occupancy) & rook_queen != 0
     }
 
@@ -727,18 +752,14 @@ impl MoveGenerator {
         let en_passant_sq = board.en_passant.unwrap().sq();
 
         // pawn bitboards
-        board
-            .get_bb_mut(Pieces::pawn(P::enemy()))
-            .clear_bit(end);
+        board.get_bb_mut(Pieces::pawn(P::enemy())).clear_bit(end);
         board
             .get_bb_mut(Pieces::pawn(P::color()))
             .clear_bit(start)
             .set_bit(en_passant_sq);
 
         // combined bitboards
-        board
-            .get_combined_bb_mut(P::enemy())
-            .clear_bit(end);
+        board.get_combined_bb_mut(P::enemy()).clear_bit(end);
         board
             .get_combined_bb_mut(P::color())
             .clear_bit(start)
@@ -752,9 +773,7 @@ impl MoveGenerator {
         let result = !self.is_sq_under_attack::<P>(king_pos, board, occupancy);
 
         // pawn bitboards
-        board
-            .get_bb_mut(Pieces::pawn(P::enemy()))
-            .set_bit(end);
+        board.get_bb_mut(Pieces::pawn(P::enemy())).set_bit(end);
         board
             .get_bb_mut(Pieces::pawn(P::color()))
             .set_bit(start)
@@ -795,8 +814,7 @@ impl MoveGenerator {
         if board.en_passant.is_some() {
             let en_passant = board.en_passant.unwrap().sq();
             let start = (en_passant as i16 + offset) as usize;
-            let en_passant_end =
-                (en_passant as i16 + P::forward_offset()) as usize;
+            let en_passant_end = (en_passant as i16 + P::forward_offset()) as usize;
             if captures.is_bit_set(en_passant)
                 && self.validate_en_passant::<P>(board, king_pos, start, en_passant_end, occupancy)
             {
@@ -980,7 +998,12 @@ impl MoveGenerator {
         }
     }
     #[inline(always)]
-    fn add_king_moves<P: PlayerTrait>(&self, move_list: &mut MoveList, board: &Board, mut occupancy: u64) {
+    fn add_king_moves<P: PlayerTrait>(
+        &self,
+        move_list: &mut MoveList,
+        board: &Board,
+        mut occupancy: u64,
+    ) {
         let king_bb = board.get_bb(Pieces::king(P::color()));
         let start = king_bb.lsb_idx();
         occupancy &= !king_bb;
@@ -996,7 +1019,12 @@ impl MoveGenerator {
         }
     }
     #[inline(always)]
-    fn add_castling_moves<P: PlayerTrait>(&self, move_list: &mut MoveList, board: &Board, occupancy: u64) {
+    fn add_castling_moves<P: PlayerTrait>(
+        &self,
+        move_list: &mut MoveList,
+        board: &Board,
+        occupancy: u64,
+    ) {
         let file_mask_qs = self.files[Files::B.idx() | Files::C.idx() | Files::D.idx()];
         let file_mask_ks = self.files[Files::F.idx() | Files::G.idx()];
 
@@ -1120,8 +1148,7 @@ impl MoveGenerator {
         } else {
             if board.en_passant.is_some() {
                 let en_passant = board.en_passant.unwrap().sq();
-                let en_passant_end =
-                    (en_passant as i16 + P::forward_offset()) as usize;
+                let en_passant_end = (en_passant as i16 + P::forward_offset()) as usize;
                 if captures.is_bit_set(en_passant)
                     && self.validate_en_passant::<P>(
                         board,
@@ -1209,7 +1236,7 @@ impl MoveGenerator {
                     move_list.add_move(pinned_pos, moves.pop_lsb());
                 }
             }
-            
+
             if piece.is_rook() || piece.is_queen() {
                 let mut moves =
                     self.magic_rook_moves(pinned_pos, occupancy) & moves_mask & pin_move_mask;
@@ -1251,7 +1278,9 @@ impl MoveGenerator {
             let attacker_pos = attackers.pop_lsb();
             let mut occupied =
                 self.slider_range[attacker_pos][king_pos] & board.get_combined_bb(P::color());
-            if occupied == 0 { continue; }
+            if occupied == 0 {
+                continue;
+            }
 
             let pinned_pos = occupied.pop_lsb();
 
@@ -1361,8 +1390,9 @@ impl MoveGenerator {
             }
             // not in check - standard move generation
             0 => {
-                let pinned = self
-                    .gen_pinned_pieces::<P>(move_list, board, occupancy, king_pos, 0, FULL_BB, FULL_BB);
+                let pinned = self.gen_pinned_pieces::<P>(
+                    move_list, board, occupancy, king_pos, 0, FULL_BB, FULL_BB,
+                );
 
                 self.add_castling_moves::<P>(move_list, board, occupancy);
                 self.add_pawn_moves::<P>(
